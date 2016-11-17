@@ -1,0 +1,358 @@
+########################################################
+#### Engie Data Science Challenge ######################
+#### Automating IT Operations using Machine Learning ###
+#### September 2016 - November 2016 ####################
+#### Ajinkya CHANDRAYAN - Data Scientist ###############
+#### Département Solutions Globales, INEO Digital ######
+########################################################
+
+
+### ALL CODE (PYTHON + R PROGRAMMING + SQL) ###
+
+
+############################################
+######### Data Preprocessing - I ###########
+############################################
+
+####### PYTHON #########################
+
+
+### Import the libraries
+
+import pandas as pd
+import csv
+import numpy as np
+from sklearn.preprocessing import LabelEncoder
+
+
+### Read the data files
+
+jobs_train = pd.read_csv('jobs_train.CSV')
+jobs_test = pd.read_csv('jobs_test.CSV')
+deals = pd.read_csv('deals.CSV')
+resource_plan = pd.read_csv('resource_plan.CSV')
+
+
+### Pre-process jobs_train + jobs_test
+
+jobs_train['Type']='Train'
+jobs_test['Type']='Test'
+fullData = pd.concat([jobs_train,jobs_test],axis=0) #Combined both Train and Test Data set
+
+
+
+### Convert string categorical variable into number category
+
+number = LabelEncoder()
+
+fullData['ini'] = number.fit_transform(fullData['ini'].astype('str'))
+fullData['codeClosing'] = number.fit_transform(fullData['codeClosing'].astype('str'))
+fullData['libjob'] = number.fit_transform(fullData['libjob'].astype('str'))
+fullData['consumer'] = fullData[['ArDailyStatConsumer','VALDailyStatConsumer','VARDailyStatConsumer']].fillna('').sum(axis=1)
+fullData['ArDailyStatConsumer'] = number.fit_transform(fullData['ArDailyStatConsumer'].astype('str'))
+fullData['VALDailyStatConsumer'] = number.fit_transform(fullData['VALDailyStatConsumer'].astype('str'))
+fullData['VARDailyStatConsumer'] = number.fit_transform(fullData['VARDailyStatConsumer'].astype('str'))
+
+
+###########################################
+######### Feature Engineering #############
+###########################################
+
+######## PYTHON  ##########################
+
+
+### Create Year, Month, Day, Week, Day of the week, Hour, Minute from the date variables : datdeb, dateCalcul, datdealversion
+ 
+dt = pd.to_datetime(fullData.datdeb).dt
+fullData["datdeb_Year"] = dt.year
+fullData["datdeb_Month"] = dt.month
+fullData["datdeb_Day"] = dt.day
+fullData["datdeb_Week"] = dt.week
+fullData["datdeb_Week_Day"] = dt.dayofweek
+fullData["datdeb_Hour"] = dt.hour
+fullData["datdeb_Minute"] = dt.minute
+
+dt = pd.to_datetime(fullData.dateCalcul).dt
+fullData["dateCalcul_Year"] = dt.year
+fullData["dateCalcul_Month"] = dt.month
+fullData["dateCalcul_Day"] = dt.day
+fullData["dateCalcul_Week"] = dt.week
+fullData["dateCalcul_Week_Day"] = dt.dayofweek
+fullData["dateCalcul_Hour"] = dt.hour
+fullData["dateCalcul_Minute"] = dt.minute
+
+dt = pd.to_datetime(fullData.datdealversion).dt
+fullData["datdealversion_Year"] = dt.year
+fullData["datdealversion_Month"] = dt.month
+fullData["datdealversion_Day"] = dt.day
+fullData["ddatdealversion_Week"] = dt.week
+fullData["datdealversion_Week_Day"] = dt.dayofweek
+fullData["datdealversion_Hour"] = dt.hour
+fullData["datdealversion_Minute"] = dt.minute
+ 
+ 
+### Create Milliseconds from date variable : dateCalcul  
+
+df1=pd.to_datetime(fullData['dateCalcul'])
+fullData["dateCalculMS"]= df1.astype(np.int64) // 10**9
+
+
+### Seperating Train and Test datasets 
+
+train = fullData[fullData['Type']=='Train']
+test = fullData[fullData['Type']=='Test']
+
+train.to_csv("jobs_train_new.csv", index = False)
+test.to_csv("jobs_test_new.csv", index = False)
+
+
+
+### Preprocessing Deals data file for pivot
+
+deals = pd.read_csv("deals.CSV")
+deals = deals.groupby(['tradeDate','dealtype']).mean().squeeze().unstack().add_suffix('_count')
+df1 = deals.replace(np.nan,0, regex=True)
+deals['fin_count'] = deals.apply(lambda row: row['CHC_count'] + row['CPT_count']+ row['CSH_count'] + row['CSHCO_count'] + row['EXFLEX_count']+ row['EXOSCP_count'] + row['EXSCP_count'] + row['FUTCO_count'] + row['GEFWD_count'] + row['GEFWI_count'] + row['GEOPT_count'] + row['GESWA_count'] + row['GETRA_count'] + row['OCH_count'] + row['OPA_count'] + row['OPC_count'] + row['OPTMO_count'] + row['PECUR_count'] + row['STOK_count'] + row['SWA_count'] + row['SWF_count'] + row['SWT_count'] + row['TER_count'] + row['TSC_count'], axis=1)
+df1=pd.to_datetime(deals['tradeDate'])
+deals["tradeDateMS"]= df1.astype(np.int64) // 10**9
+
+deals.to_csv("deals_pivot_1.csv")
+
+
+
+### Preprocessing Resource Plan file
+
+resource_plans = pd.read_csv('resource_plan.CSV')
+df1=pd.to_datetime(resource_plans['datcrever'])
+resource_plans["datcreverMS"]= df1.astype(np.int64) // 10**9
+df1=pd.to_datetime(resource_plans['Datmodver'])
+resource_plans["DatmodverMS"]= df1.astype(np.int64) // 10**9
+
+resource_plans.to_csv("resource_plan.csv", index = False)
+
+
+# Manually adding a new column 'Plan' in resource_plan.CSV. Assign each row entry with sequence Plan A.....Plan AF
+
+# SQL Queries - add column 'Plan' in jobs_train_new.CSV and assign values Plan A....Plan AF as per the logic:  << update jobs_train_new set plan = 'Plan A'  where strftime('%Y-%m-%d', datdeb)  between '2014-01-01' and '2014-12-31' and strftime('%H',datdeb) between '00' and '08' and consumer = 'Risk' >>
+
+
+###########################################
+##### Joining the other datasets ##########
+###########################################
+
+### R PROGRAMMING #########################
+
+
+### Import Libraries
+
+library(data.table)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(sqldf)
+
+jobs_train <- read.csv("jobs_train_new.csv", header = T, sep=',', stringsAsFactors = FALSE) 
+jobs_test <- read.csv("jobs_test_new.csv", header = T, sep=',', stringsAsFactors = FALSE) 
+deals_fin <- read.csv("deals_pivot_1.csv", header = T, sep=',', stringsAsFactors = FALSE)
+resource_plan <- read.csv("resource_plan.csv", header = T, sep= ',', stringsAsFactors = FALSE)
+
+
+#### Join the datasets
+
+
+jobs_train_resource_plan <- sqldf("select a.codjob,a.codtypjob,a.datdeb,a.ini,a.cntope,a.cntcpl,a.codmdljob,a.libjob,a.isincremental,a.referencejobid,a.isbatchmode,a.dateCalcul,a.idParam,a.codeClosing,a.datdealversion,a.codscenario,a.isusecachedeal,a.isusecacheparam,a.isusecachefix,a.ArDailyStatConsumer,a.VALDailyStatConsumer,a.VARDailyStatConsumer,a.job_duration,a.Type,a.datdeb_Year,a.datdeb_Month,a.datdeb_Day,a.datdeb_Week,a.datdeb_Week_Day,a.datdeb_Hour,a.datdeb_Minute,a.dateCalcul_Year,a.dateCalcul_Month,a.dateCalcul_Day,a.dateCalcul_Week,a.dateCalcul_Week_Day,a.dateCalcul_Hour,a.dateCalcul_Minute,a.datdealversion_Year,a.datdealversion_Month,a.datdealversion_Day,a.ddatdealversion_Week,a.datdealversion_Week_Day,a.datdealversion_Hour,a.datdealversion_Minute,a.consumer,a.dateCalculMS,a.plan,b.slot from jobs_train a left join resource_plan b on a.plan = b.plan")
+
+jobs_test_resource_plan <- sqldf("select a.codjob,a.codtypjob,a.datdeb,a.ini,a.cntope,a.cntcpl,a.codmdljob,a.libjob,a.isincremental,a.referencejobid,a.isbatchmode,a.dateCalcul,a.idParam,a.codeClosing,a.datdealversion,a.codscenario,a.isusecachedeal,a.isusecacheparam,a.isusecachefix,a.ArDailyStatConsumer,a.VALDailyStatConsumer,a.VARDailyStatConsumer,a.job_duration,a.Type,a.datdeb_Year,a.datdeb_Month,a.datdeb_Day,a.datdeb_Week,a.datdeb_Week_Day,a.datdeb_Hour,a.datdeb_Minute,a.dateCalcul_Year,a.dateCalcul_Month,a.dateCalcul_Day,a.dateCalcul_Week,a.dateCalcul_Week_Day,a.dateCalcul_Hour,a.dateCalcul_Minute,a.datdealversion_Year,a.datdealversion_Month,a.datdealversion_Day,a.ddatdealversion_Week,a.datdealversion_Week_Day,a.datdealversion_Hour,a.datdealversion_Minute,a.consumer,a.dateCalculMS,a.plan,b.slot from jobs_test a left join resource_plan b on a.plan = b.plan")
+
+jobs_train_resource_plan_deals <- sqldf("select a.codjob,a.codtypjob,a.datdeb,a.ini,a.cntope,a.cntcpl,a.codmdljob,a.libjob,a.isincremental,a.referencejobid,a.isbatchmode,a.dateCalcul,a.idParam,a.codeClosing,a.datdealversion,a.codscenario,a.isusecachedeal,a.isusecacheparam,a.isusecachefix,a.ArDailyStatConsumer,a.VALDailyStatConsumer,a.VARDailyStatConsumer,a.job_duration,a.Type,a.datdeb_Year,a.datdeb_Month,a.datdeb_Day,a.datdeb_Week,a.datdeb_Week_Day,a.datdeb_Hour,a.datdeb_Minute,a.dateCalcul_Year,a.dateCalcul_Month,a.dateCalcul_Day,a.dateCalcul_Week,a.dateCalcul_Week_Day,a.dateCalcul_Hour,a.dateCalcul_Minute,a.datdealversion_Year,a.datdealversion_Month,a.datdealversion_Day,a.ddatdealversion_Week,a.datdealversion_Week_Day,a.datdealversion_Hour,a.datdealversion_Minute,a.dateCalculMS,a.plan,a.consumer,a.slot,b.tradeDate,b.CHC_count,b.CPT_count,b.CSH_count,b.CSHCO_count,b.EXFLEX_count,b.EXOSCP_count,b.EXSCP_count,b.FUTCO_count,b.GEFWD_count,b.GEFWI_count,b.GEOPT_count,b.GESWA_count,b.GETRA_count,b.OCH_count,b.OPA_count,b.OPC_count,b.OPTMO_count,b.PECUR_count,b.STOK_count,b.SWA_count,b.SWF_count,b.SWT_count,b.TER_count,b.TSC_count,b.tot_count,b.tradeDateMS from jobs_train_resource_plan a left join deals_fin b on a.dateCalculMS = b.tradeDateMS")
+
+jobs_test_resource_plan_deals <- sqldf("select a.codjob,a.codtypjob,a.datdeb,a.ini,a.cntope,a.cntcpl,a.codmdljob,a.libjob,a.isincremental,a.referencejobid,a.isbatchmode,a.dateCalcul,a.idParam,a.codeClosing,a.datdealversion,a.codscenario,a.isusecachedeal,a.isusecacheparam,a.isusecachefix,a.ArDailyStatConsumer,a.VALDailyStatConsumer,a.VARDailyStatConsumer,a.job_duration,a.Type,a.datdeb_Year,a.datdeb_Month,a.datdeb_Day,a.datdeb_Week,a.datdeb_Week_Day,a.datdeb_Hour,a.datdeb_Minute,a.dateCalcul_Year,a.dateCalcul_Month,a.dateCalcul_Day,a.dateCalcul_Week,a.dateCalcul_Week_Day,a.dateCalcul_Hour,a.dateCalcul_Minute,a.datdealversion_Year,a.datdealversion_Month,a.datdealversion_Day,a.ddatdealversion_Week,a.datdealversion_Week_Day,a.datdealversion_Hour,a.datdealversion_Minute,a.consumer,a.dateCalculMS,a.plan,a.slot,b.tradeDate,b.CHC_count,b.CPT_count,b.CSH_count,b.CSHCO_count,b.EXFLEX_count,b.EXOSCP_count,b.EXSCP_count,b.FUTCO_count,b.GEFWD_count,b.GEFWI_count,b.GEOPT_count,b.GESWA_count,b.GETRA_count,b.OCH_count,b.OPA_count,b.OPC_count,b.OPTMO_count,b.PECUR_count,b.STOK_count,b.SWA_count,b.SWF_count,b.SWT_count,b.TER_count,b.TSC_count,b.tot_count,b.tradeDateMS from jobs_test_resource_plan a left join deals_fin b on a.dateCalculMS = b.tradeDateMS")
+
+write.csv(jobs_train_resource_plan_deals, file = "train_all_final_new.csv")
+write.csv(jobs_test_resource_plan_deals, file = "test_all_final_new.csv")
+
+
+#############################################
+######### Data Preprocessing - II ###########
+#############################################
+
+####### PYTHON #########################
+
+
+### Import the libraries
+
+import pandas as pd
+import csv
+import numpy as np
+from sklearn.preprocessing import LabelEncoder
+
+
+### Read the data files
+
+train = pd.read_csv('train_all_final_new.csv')
+test = pd.read_csv('test_all_final_new.csv')
+
+### Drop the pre-processed columns 
+
+train.drop('codjob', axis=1, inplace=True)
+train.drop('datdeb', axis=1, inplace=True)
+train.drop('dateCalcul', axis=1, inplace=True)
+train.drop('datdealversion', axis=1, inplace=True)
+train.drop('dateCalculMS', axis=1, inplace=True)
+train.drop('plan', axis=1, inplace=True)
+train.drop('consumer', axis=1, inplace=True)
+train.drop('dealtype', axis=1, inplace=True)
+train.drop('tradeDate', axis=1, inplace=True)
+train.drop('tradeDateMS', axis=1, inplace=True)
+test.drop('codjob', axis=1, inplace=True)
+test.drop('datdeb', axis=1, inplace=True)
+test.drop('dateCalcul', axis=1, inplace=True)
+test.drop('datdealversion', axis=1, inplace=True)
+test.drop('dateCalculMS', axis=1, inplace=True)
+test.drop('plan', axis=1, inplace=True)
+test.drop('consumer', axis=1, inplace=True)
+test.drop('dealtype', axis=1, inplace=True)
+test.drop('tradeDate', axis=1, inplace=True)
+test.drop('tradeDateMS', axis=1, inplace=True)
+test.drop('job_duration', axis=1, inplace=True)
+
+
+### Fill the missing values by mean for data variables : slot and count
+
+
+train['slot'] = train['slot'].fillna(train['slot'].mean())
+train['count'] = train['count'].fillna(train['count'].mean())
+test['slot'] = test['slot'].fillna(test['slot'].mean())
+test['count'] = test['count'].fillna(test['count'].mean())
+
+train.to_csv("train_GEM_1_x.csv", index = False)
+test.to_csv("test_GEM_1_x.csv", index = False)
+
+
+
+
+##################################################
+########### Variable Importance ##################
+##################################################
+
+### R PROGRAMMING  ###############################
+
+
+### Import library
+
+library(Boruta)
+
+## Reading the data
+
+gem_dsc_train <- read.csv("train_GEM_1_x.csv", header = T, sep=',', stringsAsFactors = FALSE)
+
+boruta.train <- Boruta(job_duration ~ codtypjob + ini + cntope + cntcpl + codmdljob + libjob + isincremental + referencejobid + isbatchmode + idParam + codeClosing + codscenario + isusecachedeal + isusecacheparam + isusecachefix + ArDailyStatConsumer + VALDailyStatConsumer + VARDailyStatConsumer, data = gem_dsc_train, doTrace = 2, maxRuns = 11)
+
+print(boruta.train)
+
+## Plotting
+
+plot(boruta.train, xlab = "", xaxt = "n")
+lz<-lapply(1:ncol(boruta.train$ImpHistory),function(i)
+  boruta.train$ImpHistory[is.finite(boruta.train$ImpHistory[,i]),i])
+names(lz) <- colnames(boruta.train$ImpHistory)
+Labels <- sort(sapply(lz,median))
+axis(side = 1, las = 2, labels = names(Labels), at = 1:ncol(boruta.train$ImpHistory),cex.axis = 0.7)
+
+## Final Boruta
+
+final.boruta <- TentativeRoughFix(boruta.train)
+print(final.boruta)
+
+## Obtain list of confirmed attributes
+
+getSelectedAttributes(final.boruta,withTentative = F)
+
+## Checking the results in data frame
+
+boruta.df <- attStats(final.boruta)
+class(boruta.df)
+print(boruta.df)
+
+
+
+
+#################################################
+########### Final Model  ########################
+#################################################
+
+### R PROGRAMMING ###############################
+
+
+### Import libraries
+
+library(readr)
+library(xgboost)
+library(stringr)
+
+
+### Read the data files
+
+gem_dsc_train <- fread("train_GEM_1_x.csv", header = T, sep=',', stringsAsFactors = FALSE)
+
+gem_dsc_test <- fread("test_GEM_1_x.csv", header = T, sep=',', stringsAsFactors = FALSE)
+
+
+### Replacing the missing values (NaN) with 0
+
+gem_dsc_train[is.na(gem_dsc_train)] <- 0
+gem_dsc_test[is.na(gem_dsc_test)] <- 0
+
+
+### Creating the data matrix
+
+label = as.matrix(gem_dsc_train$job_duration)
+
+data = as.matrix(gem_dsc_train %>% select(-job_duration))
+
+xgmat = xgb.DMatrix(data,label = label)
+
+testdata = as.matrix(gem_dsc_test)
+
+xgmatTest = xgb.DMatrix(testdata)
+
+
+### Parameters tuning
+
+logfile <- data.frame(shrinkage=c(0.40,0.35,0.40,0.45,0.50), 
+                      rounds = c(600,600,600,600,600), 
+                      depth = c(10,10,10,10,10), 
+                      gamma = c(0,0,0,0,0), 
+                      min.child = c(5,5,5,5,5), 
+                      colsample.bytree = c(0.70,0.75,0.80,0.75,0.70), 
+                      subsample = c(1,1,1,1,1))
+
+
+###  Creating bag of models
+					  
+models <- 5
+repeats <- 10
+yhat.test  <- rep(0,nrow(xgmatTest))
+
+
+### Training the model
+
+for (j in 1:repeats) {
+  for (i in 1:models){
+    set.seed(j*1000 + i*100)
+    xgboost.mod <- xgboost(data = xgmat, max.depth = logfile$depth[i], eta = logfile$shrinkage[i],
+                           nround = logfile$rounds[i], nthread = 8, objective = "reg:linear", subsample=logfile$subsample[i],
+                           colsample_bytree=logfile$colsample.bytree[i], gamma=logfile$gamma[i], min.child.weight=logfile$min.child[i])
+    yhat.test  <- yhat.test + predict(xgboost.mod, xgmatTest)  
+  }
+  print(j)
+}
+
+yhat.test <-  yhat.test/(models*repeats)
+
+## Creating submission file
+
+write.csv(data.frame(yhat.test),"submission_xgb32.csv")
+
+## Score: 12.3187479036  Rank: 3  Date: 28/10/2016
+
