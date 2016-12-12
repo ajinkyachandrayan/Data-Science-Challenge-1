@@ -1,0 +1,73 @@
+library(h2o)
+library(data.table)
+
+h2o.removeAll()
+h2o.init(nthreads=-1, max_mem_size="16g")
+
+
+gem_dsc_train <- read.csv("train_GEM_1_x.csv", header = T, sep=',', stringsAsFactors = FALSE)
+
+gem_dsc_test <- read.csv("test_GEM_1_x.csv", header = T, sep=',', stringsAsFactors = FALSE)
+
+train.h2o <- as.h2o(gem_dsc_train)
+
+test.h2o <- as.h2o(gem_dsc_test)
+
+colnames(train.h2o)
+
+y.dep <- 19
+x.indep <- c(1:18,20:66)
+
+
+require(h2oEnsemble)
+
+
+## Define the models
+
+h2o.glm.1 <- function(..., alpha = 0.0) h2o.glm.wrapper(..., alpha = alpha)
+h2o.glm.2 <- function(..., alpha = 0.5) h2o.glm.wrapper(..., alpha = alpha)
+h2o.glm.3 <- function(..., alpha = 1.0) h2o.glm.wrapper(..., alpha = alpha)
+h2o.randomForest.1 <- function(..., ntrees = 100, nbins = 50, seed = 1) h2o.randomForest.wrapper(..., ntrees = ntrees, nbins = nbins, seed = seed)
+h2o.randomForest.2 <- function(..., ntrees = 100, sample_rate = 0.75, seed = 1) h2o.randomForest.wrapper(..., ntrees = ntrees, sample_rate = sample_rate, seed = seed)
+h2o.randomForest.3 <- function(..., ntrees = 100, sample_rate = 0.85, seed = 1) h2o.randomForest.wrapper(..., ntrees = ntrees, sample_rate = sample_rate, seed = seed)
+h2o.randomForest.4 <- function(..., ntrees = 100, nbins = 50, balance_classes = TRUE, seed = 1) h2o.randomForest.wrapper(..., ntrees = ntrees, nbins = nbins, balance_classes = balance_classes, seed = seed)
+h2o.gbm.3 <- function(..., ntrees = 100, max_depth = 10, seed = 1) h2o.gbm.wrapper(..., ntrees = ntrees, max_depth = max_depth, seed = seed)
+h2o.gbm.4 <- function(..., ntrees = 100, col_sample_rate = 0.8, seed = 1) h2o.gbm.wrapper(..., ntrees = ntrees, col_sample_rate = col_sample_rate, seed = seed)
+h2o.gbm.5 <- function(..., ntrees = 100, col_sample_rate = 0.7, seed = 1) h2o.gbm.wrapper(..., ntrees = ntrees, col_sample_rate = col_sample_rate, seed = seed)
+h2o.gbm.6 <- function(..., ntrees = 100, col_sample_rate = 0.6, seed = 1) h2o.gbm.wrapper(..., ntrees = ntrees, col_sample_rate = col_sample_rate, seed = seed)
+h2o.gbm.7 <- function(..., ntrees = 100, balance_classes = TRUE, seed = 1) h2o.gbm.wrapper(..., ntrees = ntrees, balance_classes = balance_classes, seed = seed)
+h2o.gbm.8 <- function(..., ntrees = 100, max_depth = 3, seed = 1) h2o.gbm.wrapper(..., ntrees = ntrees, max_depth = max_depth, seed = seed)
+
+
+
+### Run Ensemble model
+
+family <- "AUTO"
+
+learner <- c("h2o.glm.1","h2o.glm.2","h2o.glm.3",
+             "h2o.randomForest.1","h2o.randomForest.2","h2o.randomForest.3","h2o.randomForest.4", 
+             "h2o.gbm.3","h2o.gbm.4","h2o.gbm.5","h2o.gbm.6","h2o.gbm.7","h2o.gbm.8")
+
+metalearner <- "h2o.randomForest.wrapper"
+
+system.time(
+  ensemble.model <- h2o.ensemble(x = x.indep, y = y.dep, 
+                                 training_frame = train.h2o, 
+                                 family = family, 
+                                 learner = learner, 
+                                 metalearner = metalearner,
+                                 cvControl = list(V = 5, shuffle = TRUE))
+)
+
+
+### Evaluate the performance
+
+pred <- predict.h2o.ensemble(ensemble.model, test.h2o)
+
+labels <- as.data.frame(test.h2o[,c(y)])[,1]
+
+sub_ensemble <- as.data.frame(pred$pred)
+
+write.csv(sub_ensemble,file="submission29.csv")
+
+### Score 13.65 ; 03/10/2016 Rank 3
