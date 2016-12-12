@@ -60,7 +60,7 @@ system.time(
 )
 
 
-### Evaluate the performance
+### Evaluation
 
 pred <- predict.h2o.ensemble(ensemble.model, test.h2o)
 
